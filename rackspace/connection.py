@@ -17,7 +17,8 @@ from rackspaceauth import v2
 
 class Connection(connection.Connection):
 
-    def __init__(self, region=None, profile=None, **kwargs):
+    def __init__(self, authenticator=None, region=None, profile=None,
+                 auth_plugin=None, **kwargs):
         """Create a connection to the Rackspace Public Cloud
 
         This is a subclass of :class:`openstack.connection.Connection` that
@@ -45,9 +46,17 @@ class Connection(connection.Connection):
             if service.service_name in global_services:
                 service.region = None
 
-        username = kwargs.pop("username", None)
-        tenant_id = kwargs.pop("tenant_id", None)
+        if authenticator is None and auth_plugin is None:
+            authenticator = self._guess_authenticator(**kwargs)
 
+        super(Connection, self).__init__(authenticator=authenticator,
+                                         profile=profile,
+                                         auth_plugin=auth_plugin,
+                                         **kwargs)
+
+    def _guess_authenticator(self, username=None, password=None,
+                             api_key=None, tenant_id=None, token=None,
+                             **kwargs):
         if all([username, tenant_id]):
             raise ValueError("username and tenant_id cannot be used together")
 
@@ -55,18 +64,15 @@ class Connection(connection.Connection):
             raise ValueError("username or tenant_id must be specified")
 
         if username is not None:
-            if "api_key" in kwargs:
-                auth = v2.APIKey(username=username,
-                                 api_key=kwargs.pop("api_key"))
-            elif "password" in kwargs:
-                auth = v2.Password(username=username,
-                                   password=kwargs.pop("password"))
+            if api_key is not None:
+                return v2.APIKey(username=username,
+                                 api_key=api_key)
+            elif password is not None:
+                return v2.Password(username=username,
+                                   password=password)
             else:
                 raise ValueError(
                     "Either api_key or password must be passed with username")
         else:
-            auth = v2.Token(tenant_id=tenant_id, token=kwargs.pop("token"))
-
-        super(Connection, self).__init__(authenticator=auth,
-                                         profile=profile,
-                                         **kwargs)
+            return v2.Token(tenant_id=tenant_id,
+                            token=token)
